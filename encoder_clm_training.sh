@@ -1,0 +1,25 @@
+python run_t5_clm_flax.py \
+    --model_type t5 \
+    --config_name t5-small-4L-8H \
+    --tokenizer_name t5-small \
+    --cache_dir /mnt/home/kzhao/.cache/huggingface/ \
+    --dataset_name c4 \
+    --dataset_config_name realnewslike \
+    --block_size 128 \
+    --preprocessing_num_workers 16 \
+    --output_dir t5_pretraining_jax_2 \
+    --overwrite_output_dir \
+    --do_train \
+    --do_eval \
+    --per_device_train_batch_size 256 \
+    --per_device_eval_batch_size 256 \
+    --learning_rate 0.003 \
+    --weight_decay 0.001 \
+    --adafactor \
+    --num_train_epochs 1 \
+    --warmup_steps 4000 \
+    --save_steps 2000 \
+    --eval_steps 1000 \
+    --logging_steps 20 \
+    --max_train_samples 10000 \
+    --max_eval_samples 10000

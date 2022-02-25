@@ -318,7 +318,7 @@ class FlaxDataCollatorForT5PrefixLM:
 
         # Prefix will be [0, rand_split_index), target will be [rand_split_index, expanded_input_length)
         # rand_split_index = random.randint(self.min_prefix_length, self.input_length)
-        rand_split_index = random.randint(self.input_length - self.min_prefix_length, self.input_length)  # Changed for faster training
+        rand_split_index = 100  # Changed for jax to work
 
         batch["input_ids"] = input_ids[:, :rand_split_index]
         batch["labels"] = input_ids[:, rand_split_index:]

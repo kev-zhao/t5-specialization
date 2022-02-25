@@ -32,7 +32,7 @@ from functools import partial
 from enum import Enum
 from itertools import chain
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from datasets import load_dataset
@@ -52,6 +52,7 @@ from transformers import (
     AutoTokenizer,
     BatchEncoding,
     HfArgumentParser,
+    TensorType,
     PreTrainedTokenizerBase,
     T5Config,
     set_seed,
@@ -79,6 +80,10 @@ class TrainingArguments:
                 "Use this to continue training if output_dir points to a checkpoint directory."
             )
         },
+    )
+    pretraining_objective: str = field(
+        default="span corruption",
+        metadata={"help": "The method to use for training, choose between `span corruption` and `encoder mlm`"},
     )
     do_train: bool = field(default=False, metadata={"help": "Whether to run training."})
     do_eval: bool = field(default=False, metadata={"help": "Whether to run eval on the dev set."})
@@ -485,6 +490,75 @@ class FlaxDataCollatorForT5MLM:
         return is_noise[:orig_length]
 
 
+@flax.struct.dataclass
+class FlaxDataCollatorForEncoderMLM:
+    """
+    Data collator used for language modeling. Inputs are dynamically padded to the maximum length of a batch if they
+    are not all of the same length.
+    Args:
+        tokenizer (:class:`~transformers.PreTrainedTokenizer` or :class:`~transformers.PreTrainedTokenizerFast`):
+            The tokenizer used for encoding the data.
+        mlm_probability (:obj:`float`, `optional`, defaults to 0.15):
+            The probability with which to (randomly) mask tokens in the input.
+    .. note::
+        For best performance, this data collator should be used with a dataset having items that are dictionaries or
+        BatchEncoding, with the :obj:`"special_tokens_mask"` key, as returned by a
+        :class:`~transformers.PreTrainedTokenizer` or a :class:`~transformers.PreTrainedTokenizerFast` with the
+        argument :obj:`return_special_tokens_mask=True`.
+    """
+
+    tokenizer: PreTrainedTokenizerBase
+    mlm_probability: float = 0.15
+
+    def __post_init__(self):
+        if self.tokenizer.mask_token is None:
+            raise ValueError(
+                "This tokenizer does not have a mask token which is necessary for masked language modeling. "
+                "You should pass `mlm=False` to train on causal language modeling instead."
+            )
+
+    def __call__(self, examples: List[Dict[str, np.ndarray]], pad_to_multiple_of: int) -> Dict[str, np.ndarray]:
+        # Handle dict or lists with proper padding and conversion to tensor.
+        batch = self.tokenizer.pad(examples, pad_to_multiple_of=pad_to_multiple_of, return_tensors=TensorType.NUMPY)
+
+        # If special token mask has been preprocessed, pop it from the dict.
+        special_tokens_mask = batch.pop("special_tokens_mask", None)
+
+        batch["input_ids"], batch["labels"] = self.mask_tokens(
+            batch["input_ids"], special_tokens_mask=special_tokens_mask
+        )
+        return batch
+
+    def mask_tokens(
+        self, inputs: np.ndarray, special_tokens_mask: Optional[np.ndarray]
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
+        """
+        labels = inputs.copy()
+        # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
+        probability_matrix = np.full(labels.shape, self.mlm_probability)
+        special_tokens_mask = special_tokens_mask.astype("bool")
+
+        probability_matrix[special_tokens_mask] = 0.0
+        masked_indices = np.random.binomial(1, probability_matrix).astype("bool")
+        labels[~masked_indices] = -100  # We only compute loss on masked tokens
+
+        # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
+        indices_replaced = np.random.binomial(1, np.full(labels.shape, 0.8)).astype("bool") & masked_indices
+        inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
+
+        # 10% of the time, we replace masked input tokens with random word
+        indices_random = np.random.binomial(1, np.full(labels.shape, 0.5)).astype("bool")
+        indices_random &= masked_indices & ~indices_replaced
+
+        random_words = np.random.randint(self.tokenizer.vocab_size, size=labels.shape, dtype="i4")
+        inputs[indices_random] = random_words[indices_random]
+
+        # The rest of the time (10% of the time) we keep the masked input tokens unchanged
+        return inputs, labels
+
+
 def generate_batch_splits(samples_idx: jnp.ndarray, batch_size: int) -> jnp.ndarray:
     num_samples = len(samples_idx)
     samples_to_remove = num_samples % batch_size
@@ -752,7 +826,11 @@ def main():
         target_length=targets_length,
         pad_token_id=model.config.pad_token_id,
         decoder_start_token_id=model.config.decoder_start_token_id,
-    )
+    ) if training_args.pretraining_objective.lower().contains("span corruption") \
+        else FlaxDataCollatorForEncoderMLM(
+            tokenizer=tokenizer,
+            mlm_probability=data_args.mlm_probability,
+        )
 
     # Store some constant
     num_epochs = int(training_args.num_train_epochs)
@@ -881,7 +959,8 @@ def main():
         # Gather the indexes for creating the batch and do a training step
         for step, batch_idx in enumerate(tqdm(train_batch_idx, desc="Training...", position=1)):
             samples = [tokenized_datasets["train"][int(idx)] for idx in batch_idx]
-            model_inputs = data_collator(samples)
+            model_inputs = data_collator(samples) if training_args.pretraining_objective.lower().contains("span corruption") \
+                else data_collator(samples, pad_to_multiple_of=16)
 
             # Model forward
             model_inputs = shard(model_inputs.data)

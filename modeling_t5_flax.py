@@ -1681,3 +1681,146 @@ overwrite_call_docstring(
 append_replace_return_docstrings(
     FlaxT5ForConditionalGeneration, output_type=FlaxSeq2SeqLMOutput, config_class=_CONFIG_FOR_DOC
 )
+
+
+class FlaxT5EncoderForCLMModule(nn.Module):
+    """ T5 Encoder with a LM head on top """
+
+    config: T5Config
+    dtype: jnp.dtype = jnp.float32  # the dtype of the computation
+
+    def _get_encoder_module(self):
+        return self.encoder
+
+    def setup(self):
+        self.model_dim = self.config.d_model
+
+        self.embeds = nn.Embed(
+            self.config.vocab_size,
+            self.config.d_model,
+            embedding_init=jax.nn.initializers.normal(self.config.initializer_factor),
+        )
+
+        encoder_config = copy.deepcopy(self.config)
+        encoder_config.causal = True
+        encoder_config.use_cache = False
+        encoder_config.is_encoder_decoder = False
+        self.encoder = FlaxT5Stack(encoder_config, self.embeds, dtype=self.dtype)
+
+        self.lm_head = nn.Dense(
+            self.config.vocab_size,
+            use_bias=False,
+            kernel_init=jax.nn.initializers.normal(self.config.initializer_factor),
+            dtype=self.dtype,
+        )
+
+    def __call__(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        deterministic: bool = True,
+    ):
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        # Encode
+        encoder_outputs = self.encoder(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            deterministic=deterministic,
+        )
+
+        sequence_output = encoder_outputs["last_hidden_state"]
+
+        if self.config.tie_word_embeddings:
+            # Rescale output before projecting on vocab
+            # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
+            sequence_output = sequence_output * (self.model_dim ** -0.5)
+
+        if self.config.tie_word_embeddings:
+            shared_embedding = self.embeds.variables["params"]["embedding"]
+            lm_logits = self.lm_head.apply({"params": {"kernel": shared_embedding.T}}, sequence_output)
+        else:
+            lm_logits = self.lm_head(sequence_output)
+
+        if not return_dict:
+            return (lm_logits,) + encoder_outputs
+
+        return FlaxSeq2SeqLMOutput(
+            logits=lm_logits,
+            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
+            encoder_hidden_states=encoder_outputs.hidden_states,
+            encoder_attentions=encoder_outputs.attentions,
+        )
+
+
+class FlaxT5EncoderForCLM(FlaxPreTrainedModel):
+    config_class = T5Config
+    base_model_prefix = "transformer"
+    module_class = FlaxT5EncoderForCLMModule
+
+    def __init__(
+            self,
+            config: T5Config,
+            input_shape: Tuple[int] = (1, 1),
+            seed: int = 0,
+            dtype: jnp.dtype = jnp.float32,
+            **kwargs
+    ):
+        module = self.module_class(config=config, dtype=dtype, **kwargs)
+        super().__init__(config, module, input_shape=input_shape, seed=seed, dtype=dtype)
+
+    def init_weights(self, rng: jax.random.PRNGKey, input_shape: Tuple) -> FrozenDict:
+        # init input tensors
+        input_ids = jnp.zeros(input_shape, dtype="i4")
+
+        attention_mask = jnp.ones_like(input_ids)
+
+        params_rng, dropout_rng = jax.random.split(rng)
+        rngs = {"params": params_rng, "dropout": dropout_rng}
+
+        return self.module.init(
+            rngs,
+            input_ids,
+            attention_mask,
+        )["params"]
+
+    def __call__(
+            self,
+            input_ids: jnp.ndarray,
+            attention_mask: Optional[jnp.ndarray] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+            train: bool = False,
+            params: dict = None,
+            dropout_rng: PRNGKey = None,
+    ):
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.return_dict
+
+        # prepare encoder inputs
+        if attention_mask is None:
+            attention_mask = jnp.ones_like(input_ids)
+
+        # Handle any PRNG if needed
+        rngs = {"dropout": dropout_rng} if dropout_rng is not None else {}
+
+        return self.module.apply(
+            {"params": params or self.params},
+            input_ids=jnp.array(input_ids, dtype="i4"),
+            attention_mask=jnp.array(attention_mask, dtype="i4"),
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            deterministic=not train,
+            rngs=rngs,
+        )
