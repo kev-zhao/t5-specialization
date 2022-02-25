@@ -1,4 +1,4 @@
-python run_t5_mlm_flax.py \
+python run_t5_prefix_lm_flax.py \
     --model_type t5 \
     --config_name t5-small-4L-8H \
     --tokenizer_name t5-small \
