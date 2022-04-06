@@ -4,8 +4,9 @@ import pickle
 import transformers
 from datasets import load_dataset
 
-datasets = load_dataset("c4", "realnewslike", cache_dir="/mnt/home/kzhao/.cache/huggingface")
+
 tokenizer = transformers.AutoTokenizer.from_pretrained("t5-small")
+datasets = load_dataset("c4", "realnewslike", cache_dir="/home/kzhao/.cache/huggingface")
 
 
 def tokenize_function(examples):

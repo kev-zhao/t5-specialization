@@ -1,12 +1,14 @@
-python run_t5_mlm_flax.py \
+python cli/run_t5_mlm_flax.py \
     --model_type t5 \
-    --config_name t5-small-4L-8H \
+    --config_name configs/t5-small-4L-8H \
     --tokenizer_name t5-small \
-    --cache_dir /mnt/home/kzhao/.cache/huggingface/ \
+    --cache_dir /home/kzhao/.cache/huggingface/ \
     --dataset_pickle_path processed_realnewslike.pkl \
     --max_seq_length 128 \
-    --preprocessing_num_workers 12 \
-    --output_dir t5_pretraining_jax_1 \
+    --preprocessing_num_workers 16 \
+    --layer_norm_position Post-Norm \
+    --layer_norm_type vanilla \
+    --output_dir t5_pretraining_1 \
     --overwrite_output_dir \
     --do_train \
     --do_eval \
