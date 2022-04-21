@@ -8,17 +8,18 @@ python cli/run_t5_mlm_flax.py \
     --preprocessing_num_workers 16 \
     --layer_norm_position Post-Norm \
     --layer_norm_type vanilla \
+    --position_embed BERT \
     --output_dir t5_pretraining_1 \
     --overwrite_output_dir \
     --do_train \
     --do_eval \
-    --per_device_train_batch_size 256 \
-    --per_device_eval_batch_size 256 \
-    --learning_rate 0.003 \
+    --per_device_train_batch_size 128 \
+    --per_device_eval_batch_size 128 \
+    --learning_rate 0.002 \
     --weight_decay 0.001 \
     --adafactor \
     --num_train_epochs 1 \
-    --warmup_steps 4000 \
-    --save_steps 2000 \
-    --eval_steps 1000 \
-    --logging_steps 20
+    --warmup_steps 16000 \
+    --save_steps 8000 \
+    --eval_steps 4000 \
+    --logging_steps 40

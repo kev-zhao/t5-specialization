@@ -425,7 +425,7 @@ class FlaxT5Attention(nn.Module):
                 jnp.full(attention_mask.shape, -1e4).astype(self.dtype),
             )
 
-        if position_bias is None:
+        if position_bias is None and self.config.position_embed == "relative":
             # compute position bias (only for first layer)
             position_bias = self._create_position_bias(
                 key_states, query_states, attention_mask, init_cache, seq_length, causal_attention_mask_shift
@@ -442,8 +442,8 @@ class FlaxT5Attention(nn.Module):
         # Softmax(QK^T)
         attn_weights = dot_product_attention_weights(
             query_states,
-            key_states,
-            bias=position_bias,
+            key_states,  # TODO: just set position_bias to None instead of checking here
+            bias=position_bias if self.config.position_embed == "relative" else None,  # TODO: replace None with something else
             dropout_rng=dropout_rng,
             dropout_rate=self.dropout,
             broadcast_dropout=True,
@@ -747,6 +747,13 @@ class FlaxT5Stack(nn.Module):
                 embedding_init=jax.nn.initializers.normal(self.config.init_std),
             )
 
+        if self.config.position_embed == "BERT":
+            self.position_embeddings = nn.Embed(
+                self.config.n_positions,
+                self.config.d_model,
+                embedding_init=jax.nn.initializers.normal(stddev=self.config.initializer_factor),
+            )
+
         self.block = FlaxT5BlockCollection(self.config, dtype=self.dtype)
 
         self.final_layer_norm = nn.LayerNorm(epsilon=self.config.layer_norm_epsilon, dtype=self.dtype) \
@@ -768,6 +775,10 @@ class FlaxT5Stack(nn.Module):
         init_cache: bool = False,
     ):
         hidden_states = self.embed_tokens(input_ids)
+        if self.config.position_embed == "BERT":
+            position_ids = jnp.broadcast_to(jnp.arange(jnp.atleast_2d(input_ids).shape[-1]), input_ids.shape)
+            hidden_states += self.position_embeddings(position_ids)
+
         hidden_states = self.dropout(hidden_states, deterministic=deterministic)
 
         outputs = self.block(

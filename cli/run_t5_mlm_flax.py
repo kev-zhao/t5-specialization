@@ -159,6 +159,9 @@ class ModelArguments:
     layer_norm_position: Optional[str] = field(
         default=None, metadata={"help": "Pre-Norm (default) or Post-Norm"}
     )
+    position_embed: Optional[str] = field(
+        default="relative", metadata={"help": "Type of position embedding to use, among `relative` (default), `BERT`, and `none`"}
+    )
     cache_dir: Optional[str] = field(
         default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
     )
@@ -663,6 +666,8 @@ def main():
 
     if model_args.layer_norm_position is not None:
         config.norm_position = model_args.layer_norm_position
+
+    config.position_embed = model_args.position_embed
 
     max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
     # T5-like span masked language modeling will fuse consecutively masked tokens to a single sentinel token.
