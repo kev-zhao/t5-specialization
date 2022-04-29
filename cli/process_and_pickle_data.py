@@ -5,7 +5,7 @@ import transformers
 from datasets import load_dataset
 
 
-tokenizer = transformers.AutoTokenizer.from_pretrained("t5-small")
+tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/bart-base")
 datasets = load_dataset("c4", "realnewslike", cache_dir="/home/kzhao/.cache/huggingface")
 
 
@@ -45,5 +45,5 @@ processed_datasets = tokenized_datasets.map(
     num_proc=16,
 )
 
-with open("processed_realnewslike.pkl", "wb") as f:
+with open("processed_realnewslike_bart.pkl", "wb") as f:
     pickle.dump(processed_datasets, f)

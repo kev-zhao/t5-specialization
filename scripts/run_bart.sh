@@ -1,15 +1,12 @@
 python cli/run_t5_mlm_flax.py \
-    --model_type t5 \
-    --config_name configs/t5-small-4L-8H \
-    --tokenizer_name t5-small \
+    --model_type bart \
+    --config_name facebook/bart-base \
+    --tokenizer_name facebook/bart-base \
     --cache_dir /home/kzhao/.cache/huggingface/ \
-    --dataset_pickle_path processed_realnewslike.pkl \
+    --dataset_pickle_path processed_realnewslike_bart.pkl \
     --max_seq_length 128 \
     --preprocessing_num_workers 16 \
-    --layer_norm_position Post-Norm \
-    --layer_norm_type vanilla \
-    --position_embed BERT \
-    --output_dir t5_pretraining_1 \
+    --output_dir t5_pretraining_bart \
     --overwrite_output_dir \
     --do_train \
     --do_eval \

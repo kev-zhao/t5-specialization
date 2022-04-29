@@ -42,6 +42,7 @@ import flax
 import jax
 import jax.numpy as jnp
 import optax
+import transformers
 from flax import jax_utils, traverse_util
 from flax.training import train_state
 from flax.training.common_utils import get_metrics, onehot, shard
@@ -379,6 +380,12 @@ class FlaxDataCollatorForT5MLM:
         input_ids_sentinel = self.create_sentinel_ids(mask_indices.astype(np.int8))
         labels_sentinel = self.create_sentinel_ids(labels_mask.astype(np.int8))
 
+        print(np.unique(input_ids_sentinel))
+
+        input_ids_full = np.where(input_ids_sentinel != 0, input_ids_sentinel, input_ids)
+
+        input_ids = input_ids_full[input_ids_full > 0].reshape((batch_size, -1))
+
         batch["input_ids"] = self.filter_input_ids(input_ids, input_ids_sentinel)
         batch["labels"] = self.filter_input_ids(input_ids, labels_sentinel)
 
@@ -651,14 +658,20 @@ def main():
         )
 
     if model_args.config_name:
-        config = T5Config.from_pretrained(
-            model_args.config_name, cache_dir=model_args.cache_dir, vocab_size=len(tokenizer)
-        )
-    elif model_args.model_name_or_path:
-        config = T5Config.from_pretrained(model_args.model_name_or_path, cache_dir=model_args.cache_dir)
+        if model_args.model_type == "t5":
+            config = T5Config.from_pretrained(
+                model_args.config_name, cache_dir=model_args.cache_dir, vocab_size=len(tokenizer)
+            )
+        elif model_args.model_type == "bart":
+            config = transformers.BartConfig.from_pretrained(
+                model_args.config_name, cache_dir=model_args.cache_dir, vocab_size=len(tokenizer)
+            )
+        else:
+            raise NotImplementedError
     else:
-        config = CONFIG_MAPPING[model_args.model_type]()
-        logger.warning("You are instantiating a new config instance from scratch.")
+    # elif model_args.model_name_or_path:
+        # config = T5Config.from_pretrained(model_args.model_name_or_path, cache_dir=model_args.cache_dir)
+        raise NotImplementedError
 
     config.decoder_start_token_id = config.pad_token_id
     if model_args.layer_norm_type is not None:
@@ -742,12 +755,16 @@ def main():
     dropout_rngs = jax.random.split(rng, jax.local_device_count())
 
     if model_args.model_name_or_path:
-        model = FlaxT5ForConditionalGeneration.from_pretrained(
-            model_args.model_name_or_path, config=config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype)
-        )
+        raise NotImplementedError
+        # model = FlaxT5ForConditionalGeneration.from_pretrained(
+        #     model_args.model_name_or_path, config=config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype)
+        # )
     else:
         config.vocab_size = len(tokenizer)
-        model = FlaxT5ForConditionalGeneration(config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype))
+        if model_args.model_type == "t5":
+            model = FlaxT5ForConditionalGeneration(config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype))
+        else:
+            model = transformers.FlaxAutoModelForMaskedLM.from_config(config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype))
 
     # Data collator
     # This one will take care of randomly masking the tokens.
