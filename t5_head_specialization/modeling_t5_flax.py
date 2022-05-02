@@ -444,6 +444,7 @@ class FlaxT5Attention(nn.Module):
             query_states,
             key_states,  # TODO: just set position_bias to None instead of checking here
             bias=position_bias if self.config.position_embed == "relative" else None,  # TODO: replace None with something else
+            mask=causal_attention_mask if (self.config.position_embed != "relative" and self.causal) else None,
             dropout_rng=dropout_rng,
             dropout_rate=self.dropout,
             broadcast_dropout=True,

@@ -380,12 +380,6 @@ class FlaxDataCollatorForT5MLM:
         input_ids_sentinel = self.create_sentinel_ids(mask_indices.astype(np.int8))
         labels_sentinel = self.create_sentinel_ids(labels_mask.astype(np.int8))
 
-        print(np.unique(input_ids_sentinel))
-
-        input_ids_full = np.where(input_ids_sentinel != 0, input_ids_sentinel, input_ids)
-
-        input_ids = input_ids_full[input_ids_full > 0].reshape((batch_size, -1))
-
         batch["input_ids"] = self.filter_input_ids(input_ids, input_ids_sentinel)
         batch["labels"] = self.filter_input_ids(input_ids, labels_sentinel)
 
