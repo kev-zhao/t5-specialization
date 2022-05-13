@@ -425,7 +425,7 @@ class FlaxT5Attention(nn.Module):
                 jnp.full(attention_mask.shape, -1e4).astype(self.dtype),
             )
 
-        if position_bias is None and self.config.position_embed == "relative":
+        if self.config.position_embed == "relative" and (position_bias is None or self.config.position_bias_per_layer):
             # compute position bias (only for first layer)
             position_bias = self._create_position_bias(
                 key_states, query_states, attention_mask, init_cache, seq_length, causal_attention_mask_shift
@@ -672,7 +672,7 @@ class FlaxT5BlockCollection(nn.Module):
     def setup(self):
         self.causal = self.config.causal
         self.blocks = [
-            FlaxT5LayerCollection(self.config, has_relative_attention_bias=(i == 0), dtype=self.dtype, name=str(i))
+            FlaxT5LayerCollection(self.config, has_relative_attention_bias=True if self.config.position_bias_per_layer else (i == 0), dtype=self.dtype, name=str(i))
             for i in range(self.config.num_layers)
         ]
 

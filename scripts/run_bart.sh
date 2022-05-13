@@ -1,9 +1,9 @@
 python cli/run_t5_mlm_flax.py \
     --model_type bart \
     --config_name facebook/bart-base \
-    --tokenizer_name facebook/bart-base \
+    --tokenizer_name t5-small \
     --cache_dir /home/kzhao/.cache/huggingface/ \
-    --dataset_pickle_path processed_realnewslike_bart.pkl \
+    --dataset_pickle_path processed_realnewslike.pkl \
     --max_seq_length 128 \
     --preprocessing_num_workers 16 \
     --output_dir t5_pretraining_bart \

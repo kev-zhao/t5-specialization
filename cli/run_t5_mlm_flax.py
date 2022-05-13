@@ -163,6 +163,10 @@ class ModelArguments:
     position_embed: Optional[str] = field(
         default="relative", metadata={"help": "Type of position embedding to use, among `relative` (default), `BERT`, and `none`"}
     )
+    position_bias_per_layer: bool = field(
+        default=False,
+        metadata={"help": ""}  # TODO
+    )
     cache_dir: Optional[str] = field(
         default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
     )
@@ -675,6 +679,7 @@ def main():
         config.norm_position = model_args.layer_norm_position
 
     config.position_embed = model_args.position_embed
+    config.position_bias_per_layer = model_args.position_bias_per_layer
 
     max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
     # T5-like span masked language modeling will fuse consecutively masked tokens to a single sentinel token.

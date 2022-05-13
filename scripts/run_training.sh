@@ -6,9 +6,10 @@ python cli/run_t5_mlm_flax.py \
     --dataset_pickle_path processed_realnewslike.pkl \
     --max_seq_length 128 \
     --preprocessing_num_workers 16 \
-    --layer_norm_position Post-Norm \
-    --layer_norm_type vanilla \
-    --position_embed BERT \
+    --layer_norm_position Pre-Norm \
+    --layer_norm_type bias-less \
+    --position_embed relative \
+    --position_embed True \
     --output_dir t5_pretraining_1 \
     --overwrite_output_dir \
     --do_train \
