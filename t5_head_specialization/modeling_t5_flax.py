@@ -443,8 +443,8 @@ class FlaxT5Attention(nn.Module):
         attn_weights = dot_product_attention_weights(
             query_states,
             key_states,  # TODO: just set position_bias to None instead of checking here
-            bias=position_bias if self.config.position_embed == "relative" else None,  # TODO: replace None with something else
-            mask=causal_attention_mask if (self.config.position_embed != "relative" and self.causal) else None,
+            bias=position_bias if self.config.position_embed == "relative" and (not self.config.position_embed_first_layer_only or self.has_relative_attention_bias) else None,  # TODO: replace None with something else
+            mask=causal_attention_mask if (not (self.config.position_embed == "relative" and (not self.config.position_embed_first_layer_only or self.has_relative_attention_bias)) and self.causal) else None,
             dropout_rng=dropout_rng,
             dropout_rate=self.dropout,
             broadcast_dropout=True,
@@ -639,6 +639,13 @@ class FlaxT5LayerCollection(nn.Module):
             self.config, has_relative_attention_bias=self.has_relative_attention_bias, dtype=self.dtype
         )
 
+        if not self.config.position_embed_first_layer_only and self.config.position_bias_per_layer and self.config.position_embed == "BERT":
+            self.position_embeddings = nn.Embed(
+                self.config.n_positions,
+                self.config.d_model,
+                embedding_init=jax.nn.initializers.normal(stddev=self.config.initializer_factor),
+            )
+
     def __call__(
         self,
         hidden_states,
@@ -652,6 +659,10 @@ class FlaxT5LayerCollection(nn.Module):
         deterministic=True,
         init_cache=False,
     ):
+        if not self.config.position_embed_first_layer_only and self.config.position_bias_per_layer and self.config.position_embed == "BERT":
+            position_ids = jnp.broadcast_to(jnp.arange(jnp.atleast_2d(hidden_states).shape[1]), hidden_states.shape[:-1])
+            hidden_states += self.position_embeddings(position_ids)
+
         return self.layer(
             hidden_states,
             attention_mask=attention_mask,
@@ -676,6 +687,13 @@ class FlaxT5BlockCollection(nn.Module):
             for i in range(self.config.num_layers)
         ]
 
+        if (self.config.position_embed_first_layer_only and self.config.position_embed == "BERT") or (not self.config.position_embed_first_layer_only and not self.config.position_bias_per_layer):
+            self.position_embeddings = nn.Embed(
+                self.config.n_positions,
+                self.config.d_model,
+                embedding_init=jax.nn.initializers.normal(stddev=self.config.initializer_factor),
+            )
+
     def __call__(
         self,
         hidden_states=None,
@@ -697,6 +715,10 @@ class FlaxT5BlockCollection(nn.Module):
         for i, layer_module in enumerate(self.blocks):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
+
+            if self.config.position_embed == "BERT" and ((self.config.position_embed_first_layer_only and i == 0) or (not self.config.position_embed_first_layer_only and not self.config.position_bias_per_layer)):
+                position_ids = jnp.broadcast_to(jnp.arange(jnp.atleast_2d(hidden_states).shape[1]), hidden_states.shape[:-1])
+                hidden_states += self.position_embeddings(position_ids)
 
             layer_outputs = layer_module(
                 hidden_states,
@@ -748,13 +770,6 @@ class FlaxT5Stack(nn.Module):
                 embedding_init=jax.nn.initializers.normal(self.config.init_std),
             )
 
-        if self.config.position_embed == "BERT":
-            self.position_embeddings = nn.Embed(
-                self.config.n_positions,
-                self.config.d_model,
-                embedding_init=jax.nn.initializers.normal(stddev=self.config.initializer_factor),
-            )
-
         self.block = FlaxT5BlockCollection(self.config, dtype=self.dtype)
 
         self.final_layer_norm = nn.LayerNorm(epsilon=self.config.layer_norm_epsilon, dtype=self.dtype) \
@@ -776,10 +791,6 @@ class FlaxT5Stack(nn.Module):
         init_cache: bool = False,
     ):
         hidden_states = self.embed_tokens(input_ids)
-        if self.config.position_embed == "BERT":
-            position_ids = jnp.broadcast_to(jnp.arange(jnp.atleast_2d(input_ids).shape[-1]), input_ids.shape)
-            hidden_states += self.position_embeddings(position_ids)
-
         hidden_states = self.dropout(hidden_states, deterministic=deterministic)
 
         outputs = self.block(

@@ -2,16 +2,16 @@ python cli/run_t5_mlm_flax.py \
     --model_type t5 \
     --config_name configs/t5-small-4L-8H \
     --tokenizer_name t5-small \
-    --cache_dir /home/kzhao/.cache/huggingface/ \
+    --cache_dir /mnt/home/kzhao/.cache/huggingface/ \
     --dataset_pickle_path processed_realnewslike.pkl \
     --max_seq_length 128 \
     --preprocessing_num_workers 16 \
     --layer_norm_position Pre-Norm \
     --layer_norm_type bias-less \
-    --position_embed BERT \
+    --position_embed relative \
     --position_bias_per_layer False \
-    --position_embed_first_layer_only False \
-    --output_dir t5_pretraining_1 \
+    --position_embed_first_layer_only True \
+    --output_dir t5_pretraining_2 \
     --overwrite_output_dir \
     --do_train \
     --do_eval \

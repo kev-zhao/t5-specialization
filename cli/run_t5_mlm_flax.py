@@ -165,7 +165,11 @@ class ModelArguments:
     )
     position_bias_per_layer: bool = field(
         default=False,
-        metadata={"help": ""}  # TODO
+        metadata={"help": "Whether to use a new positional embedding every layer"}
+    )
+    position_embed_first_layer_only: bool = field(
+        default=False,
+        metadata={"help": "Will be False if position_bias_per_layer is True"}  # TODO: more help description
     )
     cache_dir: Optional[str] = field(
         default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
@@ -680,6 +684,7 @@ def main():
 
     config.position_embed = model_args.position_embed
     config.position_bias_per_layer = model_args.position_bias_per_layer
+    config.position_embed_first_layer_only = model_args.position_embed_first_layer_only
 
     max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
     # T5-like span masked language modeling will fuse consecutively masked tokens to a single sentinel token.

@@ -1,0 +1,11 @@
+cloudpickle==2.0.0
+datasets==2.0.0
+flax==0.4.1
+jax==0.3.4
+jaxlib==0.3.2+cuda11.cudnn82
+numpy==1.22.3
+scipy==1.8.0
+tokenizers==0.11.6
+tqdm==4.64.0
+transformers==4.18.0
+wandb==0.12.12
